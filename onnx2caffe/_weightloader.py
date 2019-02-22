@@ -50,8 +50,8 @@ def _convert_BatchNorm(net, node, graph, err):
     np.copyto(net.params[node_name + '_bn'][0].data, mean, casting='same_kind')
     np.copyto(net.params[node_name + '_bn'][1].data, var, casting='same_kind')
     net.params[node_name + '_bn'][2].data[...] = 1.0
-    np.copyto(net.params[node_name][0].data, scale, casting='same_kind')
-    np.copyto(net.params[node_name][1].data, bias, casting='same_kind')
+    np.copyto(net.params[node_name + '_scale'][0].data, scale, casting='same_kind')
+    np.copyto(net.params[node_name + '_scale'][1].data, bias, casting='same_kind')
     # net.params[node_name+'_bn'][1].data = var
     # net.params[node_name][0].data = scale
     # net.params[node_name][1].data = bias

@@ -121,21 +121,18 @@ def _convert_BatchNorm(node, graph, err):
     input_name = str(node.inputs[0])
     output_name = str(node.outputs[0])
 
-    if input_name == output_name:
-        inplace = True
-    else:
-        inplace = False
-
+    bn_layer_name = node_name + "_bn"
+    scale_layer_name = node_name + "_scale"
     bn_layer = myf(
         "BatchNorm",
-        node_name + "_bn", [input_name], [output_name],
+        bn_layer_name, [input_name], [bn_layer_name],
         eps=epsilon,
         use_global_stats=True,
-        in_place=inplace)
+        in_place=False)
     scale_layer = myf(
         "Scale",
-        node_name, [output_name], [output_name],
-        in_place=True,
+        scale_layer_name, [bn_layer_name], [output_name],
+        in_place=False,
         bias_term=True)
 
     graph.channel_dims[output_name] = graph.channel_dims[input_name]
