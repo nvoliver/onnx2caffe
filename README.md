@@ -1,32 +1,38 @@
-# Convert pytorch to Caffe by ONNX
-This tool converts [pytorch](https://github.com/pytorch/pytorch) model to [Caffe](https://github.com/BVLC/caffe) model by [ONNX](https://github.com/onnx/onnx)  
-only use for inference
+# Convert ONNX to Caffe
+This tool converts [ONNX](https://github.com/onnx/onnx) models to [Caffe](https://github.com/BVLC/caffe) format. Only use for inference.
 
-### Dependencies
-* caffe (with python support)
-* pytorch 0.4 (optional if you only want to convert onnx)
-* onnx  
+## Dependencies
+* Caffe 1.0 (with Python support)
+* ONNX 1.4.0
+* protobuf 3.7.1  
 
-we recomand using protobuf 2.6.1 and install onnx from source  
+## How to use
+To convert an ONNX model to Caffe:
 ```
-git clone --recursive https://github.com/onnx/onnx.git
-cd onnx 
-python setup.py install
+python convertCaffe.py --onnx ./model/MobileNetV2.onnx --prototxt ./model/MobileNetV2.prototxt --caffemodel ./model/MobileNetV2.caffemodel
 ```
 
-### How to use
-run test.py to make sure it has been installed correctly  
-To convert onnx model to caffe:
+### Setup with Docker
+Build a Docker image with a minimal Caffe 1.0, ONNX 1.4.0 and protobuf 3.7.1  installation, using the `Dockerfile` inside this repo:
 ```
-python convertCaffe.py ./model/MobileNetV2.onnx ./model/MobileNetV2.prototxt ./model/MobileNetV2.caffemodel
+docker build --network=host -t onnx-caffe_18.04 .
 ```
-### Current support operation
+
+Then create a Docker container based on this image and open a terminal inside:
+```
+docker run --network=host -e PYTHONPATH=/workspace/onnx2caffe -v $PWD:/workspace -it onnx-caffe_18.04 /bin/bash
+cd /workspace
+python3 convertCaffe.py [with arguments from above]
+```
+
+### Currently supported operations
 * Conv
 * ConvTranspose
 * BatchNormalization
 * MaxPool
 * AveragePool
-* Relu
+* Leaky ReLU
+* ReLU
 * Sigmoid
 * Dropout
 * Gemm (InnerProduct only)
@@ -36,8 +42,3 @@ python convertCaffe.py ./model/MobileNetV2.onnx ./model/MobileNetV2.prototxt ./m
 * Upsample
 * Concat
 * Flatten
-
-### TODO List
- - [ ] support all onnx operations (which is impossible)
- - [ ] merge batchnormization to convolution
- - [ ] merge scale to convolution
