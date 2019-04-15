@@ -50,10 +50,11 @@ def _convert_conv(node, graph, err):
         bias = node.input_tensors[node.inputs[2]]
         bias_flag = True
     dilations = node.attrs.get("dilations", [1, 1])
-    # groups = 1
     groups = node.attrs.get("group", 1)
     kernel_shape = node.attrs["kernel_shape"]
     pads = node.attrs.get("pads", [0, 0, 0, 0])
+    if node.attrs.get("auto_pad", None) == b"SAME_LOWER":
+        pads = [kernel_shape[0] // 2, kernel_shape[1] // 2]
     strides = node.attrs["strides"]
 
     layer = myf(
@@ -74,6 +75,27 @@ def _convert_conv(node, graph, err):
     return layer
 
 
+def _convert_leakyrelu(node, graph, err):
+    input_name = str(node.inputs[0])
+    output_name = str(node.outputs[0])
+    name = str(node.name)
+
+    if input_name == output_name:
+        inplace = True
+    else:
+        inplace = False
+    negative_slope = node.attrs.get("alpha", 0.1)
+    layer = myf(
+        "ReLU",
+        name, [input_name], [output_name],
+        in_place=inplace,
+        negative_slope=negative_slope)
+
+    graph.channel_dims[output_name] = graph.channel_dims[input_name]
+
+    return layer
+
+
 def _convert_relu(node, graph, err):
     input_name = str(node.inputs[0])
     output_name = str(node.outputs[0])
@@ -85,7 +107,6 @@ def _convert_relu(node, graph, err):
         inplace = False
 
     layer = myf("ReLU", name, [input_name], [output_name], in_place=inplace)
-    # l_top_relu1 = L.ReLU(l_bottom, name=name, in_place=True)
 
     graph.channel_dims[output_name] = graph.channel_dims[input_name]
 
@@ -103,7 +124,6 @@ def _convert_sigmoid(node, graph, err):
         inplace = False
 
     layer = myf("Sigmoid", name, [input_name], [output_name], in_place=inplace)
-    # l_top_relu1 = L.ReLU(l_bottom, name=name, in_place=True)
 
     graph.channel_dims[output_name] = graph.channel_dims[input_name]
 
@@ -183,11 +203,6 @@ def _convert_Mul(node, graph, err):
     input_name_list = [str(i) for i in node.inputs]
     output_name = str(node.outputs[0])
     node_name = node.name
-
-    # max_dim = 0
-    # for name in input_name_list:
-    #     if graph.channel_dims[name]>max_dim:
-    #         max_dim = graph.channel_dims[name]
 
     if 'broadcast' in node.attrs:
         if node.attrs['broadcast'] == 1:
@@ -350,18 +365,22 @@ def _convert_gemm(node, graph, err):
 
 
 def _convert_upsample(node, graph, err):
-    factor = int(node.attrs["height_scale"])
+    if 'height_scale' in node.attrs.keys():
+        factor = int(node.attrs['height_scale'])
+        assert factor == int(node.attrs['width_scale'])
+    elif 'scales' in node.attrs.keys():
+        scales = node.attrs['scales']
+        assert len(scales) == 4
+        assert scales[2] == scales[3]
+        factor = int(scales[2])
+    else:
+        raise ValueError('Could not find scale values in Upsample node: %s' %
+                         str(node.attrs))
     node_name = node.name
     input_name = str(node.inputs[0])
     output_name = str(node.outputs[0])
-    # input_shape = graph.shape_dict[input_name]
-    # channels = input_shape[1]
     channels = graph.channel_dims[input_name]
     pad = int(math.ceil((factor - 1) / 2.))
-    # layer = myf("Deconvolution", node_name, [input_name], [output_name],
-    #             kernel_size=2 * factor - factor % 2,
-    #             stride=factor, group=channels,
-    #             pad = pad, num_output=channels, bias_term = False)
     mode = node.attrs["mode"]
     #https://github.com/pytorch/pytorch/issues/6900
     if mode == "bilinear":
@@ -430,7 +449,6 @@ def _convert_conv_transpose(node, graph, err):
         bias = node.input_tensors[node.inputs[2]]
         bias_flag = True
     dilations = node.attrs.get("dilations", [1, 1])
-    # groups = 1
     groups = node.attrs.get("group", 1)
     kernel_shape = node.attrs["kernel_shape"]
     pads = node.attrs.get("pads", [0, 0, 0, 0])
@@ -454,24 +472,11 @@ def _convert_conv_transpose(node, graph, err):
     graph.channel_dims[output_name] = W.shape[1]
     return layer
 
-    # l_top = L.Deconvolution(
-    #     l_bottom,
-    #     name=name,
-    #     convolution_param=dict(
-    #         num_output=W.shape[1],
-    #         kernel_h=kernel_h,
-    #         kernel_w=kernel_w,
-    #         stride_h=stride_h,
-    #         stride_w=stride_w,
-    #         pad_h=pad_h,
-    #         pad_w=pad_w,
-    #         group=groups,
-    #         bias_term=bias_term))
-
 
 _ONNX_NODE_REGISTRY = {
     "Conv": _convert_conv,
     "Relu": _convert_relu,
+    "LeakyRelu": _convert_leakyrelu,
     "BatchNormalization": _convert_BatchNorm,
     "Add": _convert_Add,
     "Mul": _convert_Mul,
