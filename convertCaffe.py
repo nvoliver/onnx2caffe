@@ -1,22 +1,20 @@
 from __future__ import print_function
-import torch
-import torch.nn
-import sys
+
+import argparse
+
 import onnx
-import numpy as np
+from onnx import shape_inference
+from onnx import optimizer
+
 import caffe
 from caffe.proto import caffe_pb2
 caffe.set_mode_cpu()
+
 from onnx2caffe._transformers import ConvAddFuser, ConstantsToInitializers
 from onnx2caffe._graph import Graph
-
 import onnx2caffe._operators as cvt
 import onnx2caffe._weightloader as wlr
 from onnx2caffe._error_utils import ErrorHandling
-from collections import OrderedDict
-from onnx import shape_inference
-from onnx import optimizer
-import importlib
 
 transformers = [
     ConstantsToInitializers(),
@@ -24,7 +22,12 @@ transformers = [
 ]
 
 
-def convertToCaffe(graph, prototxt_save_path, caffe_model_save_path):
+def convertToCaffe(graph, prototxt_save_path, caffemodel_save_path,
+                   convert_leaky_relu):
+
+    if convert_leaky_relu:
+        cvt._ONNX_NODE_REGISTRY['LeakyRelu'] = cvt._ONNX_NODE_REGISTRY['Relu']
+        wlr._ONNX_NODE_REGISTRY['LeakyRelu'] = wlr._ONNX_NODE_REGISTRY['Relu']
 
     exist_edges = []
     layers = []
@@ -50,7 +53,6 @@ def convertToCaffe(graph, prototxt_save_path, caffe_model_save_path):
                 break
         if input_non_exist_flag:
             continue
-
         if op_type not in cvt._ONNX_NODE_REGISTRY:
             err.unsupported_op(node)
             continue
@@ -89,13 +91,12 @@ def convertToCaffe(graph, prototxt_save_path, caffe_model_save_path):
         converter_fn = wlr._ONNX_NODE_REGISTRY[op_type]
         converter_fn(net, node, graph, err)
 
-    net.save(caffe_model_save_path)
+    net.save(caffemodel_save_path)
     return net
 
 
 def getGraph(onnx_path):
     model = onnx.load(onnx_path)
-
     opt_passes = ['eliminate_nop_pad']
     model = optimizer.optimize(model, opt_passes)
     model = shape_inference.infer_shapes(model)
@@ -107,9 +108,40 @@ def getGraph(onnx_path):
     return graph
 
 
-if __name__ == "__main__":
-    onnx_path = sys.argv[1]
-    prototxt_path = sys.argv[2]
-    caffemodel_path = sys.argv[3]
+def main(args):
+    onnx_path = args.onnx
+    prototxt_path = args.prototxt
+    caffemodel_path = args.caffemodel
+    convert_leaky_relu = args.noleaky
     graph = getGraph(onnx_path)
-    convertToCaffe(graph, prototxt_path, caffemodel_path)
+    convertToCaffe(graph, prototxt_path, caffemodel_path, convert_leaky_relu)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description='Convert ONNX to Caffe .prototxt and .caffemodel')
+    parser.add_argument(
+        '-i',
+        '--onnx',
+        type=str,
+        required=True,
+        help='Path to ONNX model (input) file')
+    parser.add_argument(
+        '-p',
+        '--prototxt',
+        type=str,
+        required=True,
+        help='Path to Caffe .prototxt (output) file')
+    parser.add_argument(
+        '-c',
+        '--caffemodel',
+        type=str,
+        help='Path to .caffemodel (output) file')
+    parser.add_argument(
+        '--noleaky',
+        help='Flag whether to use ReLU instead of Leaky ReLU.'
+        'Just for run-time measurements: Will not produce the same results as with Leaky ReLU.',
+        action='store_true')
+
+    args = parser.parse_args()
+    main(args)
