@@ -336,7 +336,7 @@ def _convert_gemm(node, graph, err):
                 weight_name, ))
         return
 
-    if node.attrs["broadcast"] != 1 or node.attrs["transB"] != 1:
+    if node.attrs.get("broadcast", 1) != 1 or node.attrs.get("transB", 1) != 1:
         return err.unsupported_op_configuration(
             node, "Gemm is supported only for inner_product layer")
 
@@ -382,8 +382,10 @@ def _convert_upsample(node, graph, err):
     channels = graph.channel_dims[input_name]
     pad = int(math.ceil((factor - 1) / 2.))
     mode = node.attrs["mode"]
+    # print(mode)
+    # exit(0)
     #https://github.com/pytorch/pytorch/issues/6900
-    if mode == "bilinear":
+    if mode == b"bilinear":
         layer = myf(
             "Deconvolution",
             node_name, [input_name], [output_name],
@@ -394,7 +396,7 @@ def _convert_upsample(node, graph, err):
                 pad=pad,
                 group=channels,
                 bias_term=False,
-                weight_filler=dict(type="bilinear_upsampling")))
+                weight_filler=dict(type="bilinear")))
     else:
         layer = myf(
             "Deconvolution",
