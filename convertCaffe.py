@@ -22,8 +22,11 @@ transformers = [
 ]
 
 
-def convertToCaffe(graph, prototxt_save_path, caffemodel_save_path,
-                   convert_leaky_relu):
+def convertToCaffe(graph,
+                   prototxt_save_path,
+                   caffemodel_save_path,
+                   convert_leaky_relu,
+                   max_inputs=-1):
 
     if convert_leaky_relu:
         cvt._ONNX_NODE_REGISTRY['LeakyRelu'] = cvt._ONNX_NODE_REGISTRY['Relu']
@@ -33,12 +36,18 @@ def convertToCaffe(graph, prototxt_save_path, caffemodel_save_path,
     layers = []
     exist_nodes = []
     err = ErrorHandling()
+    if max_inputs > 0:
+        graph.inputs = graph.inputs[:max_inputs]
+
     for i in graph.inputs:
         edge_name = i[0]
         input_layer = cvt.make_input(i)
         layers.append(input_layer)
         exist_edges.append(i[0])
-        graph.channel_dims[edge_name] = graph.shape_dict[edge_name][1]
+        dims_input = graph.shape_dict[edge_name]
+        for dim in dims_input:
+            assert dim > 0, 'Please export the ONNX graph without dynamic shapes.'
+        graph.channel_dims[edge_name] = dims_input[1]
 
     for id, node in enumerate(graph.nodes):
         node_name = node.name
@@ -95,16 +104,16 @@ def convertToCaffe(graph, prototxt_save_path, caffemodel_save_path,
     return net
 
 
-def getGraph(onnx_path):
+def getGraph(onnx_path, with_opt=False):
     model = onnx.load(onnx_path)
-    opt_passes = ['eliminate_nop_pad', 'eliminate_identity']
-    model = optimizer.optimize(model, opt_passes)
+    if with_opt:
+        opt_passes = ['eliminate_nop_pad', 'eliminate_identity']
+        model = optimizer.optimize(model, opt_passes)
     model = shape_inference.infer_shapes(model)
     model_graph = model.graph
     graph = Graph.from_onnx(model_graph)
     graph = graph.transformed(transformers)
     graph.channel_dims = {}
-
     return graph
 
 
@@ -113,34 +122,45 @@ def main(args):
     prototxt_path = args.prototxt
     caffemodel_path = args.caffemodel
     convert_leaky_relu = args.noleaky
-    graph = getGraph(onnx_path)
-    convertToCaffe(graph, prototxt_path, caffemodel_path, convert_leaky_relu)
+    max_inputs = args.max_inputs
+    with_opt = not args.disable_onnx_opts
+    graph = getGraph(onnx_path, with_opt)
+    convertToCaffe(graph, prototxt_path, caffemodel_path, convert_leaky_relu,
+                   max_inputs)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Convert ONNX to Caffe .prototxt and .caffemodel')
-    parser.add_argument(
-        '-i',
-        '--onnx',
-        type=str,
-        required=True,
-        help='Path to ONNX model (input) file')
-    parser.add_argument(
-        '-p',
-        '--prototxt',
-        type=str,
-        required=True,
-        help='Path to Caffe .prototxt (output) file')
-    parser.add_argument(
-        '-c',
-        '--caffemodel',
-        type=str,
-        help='Path to .caffemodel (output) file')
+    parser.add_argument('-i',
+                        '--onnx',
+                        type=str,
+                        required=True,
+                        help='Path to ONNX model (input) file')
+    parser.add_argument('-p',
+                        '--prototxt',
+                        type=str,
+                        required=True,
+                        help='Path to Caffe .prototxt (output) file')
+    parser.add_argument('-c',
+                        '--caffemodel',
+                        type=str,
+                        help='Path to .caffemodel (output) file')
     parser.add_argument(
         '--noleaky',
         help='Flag whether to use ReLU instead of Leaky ReLU.'
         'Just for run-time measurements: Will not produce the same results as with Leaky ReLU.',
+        action='store_true')
+    parser.add_argument(
+        '--max-inputs',
+        help=
+        'Only use the first N input tensors of the ONNX graph. Default: -1 (do not restrict).',
+        type=int,
+        default=-1)
+    parser.add_argument(
+        '--disable-onnx-opts',
+        '-d',
+        help='Disable all ONNX optimization passes (fails for some models).',
         action='store_true')
 
     args = parser.parse_args()
