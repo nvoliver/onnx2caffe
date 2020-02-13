@@ -97,7 +97,7 @@ def convertToCaffe(graph, prototxt_save_path, caffemodel_save_path,
 
 def getGraph(onnx_path):
     model = onnx.load(onnx_path)
-    opt_passes = ['eliminate_nop_pad']
+    opt_passes = ['eliminate_nop_pad', 'eliminate_identity']
     model = optimizer.optimize(model, opt_passes)
     model = shape_inference.infer_shapes(model)
     model_graph = model.graph
