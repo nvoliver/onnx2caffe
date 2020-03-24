@@ -21,6 +21,10 @@ transformers = [
     ConvAddFuser(),
 ]
 
+def name_to_alpha(name, prefix='node_'):
+    if name[0].isnumeric():
+        name = '{}{}'.format(prefix, name)
+    return name
 
 def convertToCaffe(graph,
                    prototxt_save_path,
@@ -50,7 +54,14 @@ def convertToCaffe(graph,
         graph.channel_dims[edge_name] = dims_input[1]
 
     for id, node in enumerate(graph.nodes):
-        node_name = node.name
+        # node_name = node.name
+        # if node.name[0].isnumeric():
+        node.name = name_to_alpha(node.name)
+        for idx in range(len(node.inputs)):
+            node.inputs[idx] = name_to_alpha(node.inputs[idx])
+        for idx in range(len(node.outputs)):
+            node.outputs[idx] = name_to_alpha(node.outputs[idx])
+        # import pdb; pdb.set_trace()
         op_type = node.op_type
         inputs = node.inputs
         inputs_tensor = node.input_tensors
